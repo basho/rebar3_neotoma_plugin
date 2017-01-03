@@ -1,6 +1,7 @@
 %% -------------------------------------------------------------------
 %%
 %% Copyright (c) 2017 Basho Technologies, Inc.
+%% Copyright (c) 2015 Tristan Sloughter.
 %% Copyright (c) 2015 Oleg Tsarev.
 %%
 %% This file is provided to you under the Apache License,
@@ -35,9 +36,6 @@
 
 -export([init/1, do/1, format_error/1]).
 
--define(PROVIDER, compile).
--define(DEPS, [{default}]).
-
 %% ===================================================================
 %% Public API
 %% ===================================================================
@@ -46,21 +44,16 @@
 %%
 %% @doc Install the provider.
 %%
-%% Called when rebar3 first boots, before even parsing the arguments
-%% or commands to be run. Purely initiates the provider, and nothing
-%% else should be done here.
-%%
 init(State) ->
     Provider = providers:create([
-        {name,        ?PROVIDER                 },
-        {module,      ?MODULE                   },
-        {namespace,   neotoma                   },
-        {bare,        false                     },
-        {deps,        ?DEPS                     },
-        {example,     "rebar3 neotoma compile"  },
-        {short_desc,  "compile peg files."      },
-        {desc,        "compile peg files."      },
-        {opts,        []                        }
+        {name,        neotoma },
+        {module,      ?MODULE },
+        {bare,        true },
+        {deps,        []},
+        {example,     "rebar3 neotoma" },
+        {short_desc,  "compile peg files." },
+        {desc,        "compile peg files." },
+        {opts,        [] }
     ]),
     {ok, rebar_state:add_provider(State, Provider)}.
 
@@ -68,32 +61,16 @@ init(State) ->
         -> {ok, rebar_state()} | {error, string()} | {error, {module(), any()}}.
 %%
 %% @doc Run the code for the plugin.
-%% The command line arguments are parsed and dependencies have been run.
 %%
 do(State) ->
     rebar_api:info("Running neotoma...", []),
-    case rebar_state:get(State, escript_main_app, undefined) of
+    Apps = case rebar_state:current_app(State) of
         undefined ->
-            Dir = rebar_state:dir(State),
-            case rebar_app_discover:find_app(Dir, all) of
-                {true, AppInfo} ->
-                    AllApps = rebar_state:project_apps(State)
-                            ++ rebar_state:all_deps(State),
-                    case rebar_app_utils:find(
-                            rebar_app_info:name(AppInfo), AllApps) of
-                        {ok, AppInfo1} ->
-                            %% Use the existing app info instead of newly created one
-                            run_neotoma(AppInfo1, State);
-                        _ ->
-                            run_neotoma(AppInfo, State)
-                    end,
-                        {ok, State};
-                _ ->
-                    {error, {?MODULE, no_main_app}}
-            end;
-        _Name ->
-            {ok, State}
-    end.
+            rebar_state:project_apps(State);
+        App ->
+            [App]
+    end,
+    run_neotoma(Apps, State).
 
 -spec format_error(any()) -> iolist().
 %%
@@ -106,39 +83,36 @@ format_error(Reason) ->
 %% Internal
 %% ===================================================================
 
--spec run_neotoma(App :: rebar_app_info(), State :: rebar_state())
+-spec run_neotoma(
+        Apps    :: [rebar_app_info()],
+        State   :: rebar_state())
         -> {ok, rebar_state()} | {error, string()} | {error, {module(), any()}}.
 
-run_neotoma(App, State) ->
-    rebar_api:debug("run_neotoma(~p)", [rebar_app_info:name(App)]),
-    Source = rebar_app_info:source(App),
-    Dir = rebar_state:dir(State),
-    rebar_api:debug("source=~p dir=~p", [Source, Dir]),
+run_neotoma([App | Apps], State) ->
+    rebar_api:debug("run_neotoma: ~s", [rebar_app_info:name(App)]),
+    SrcDir = filename:join(rebar_app_info:dir(App), "src"),
     case rebar_base_compiler:run(
-            State, [], Source, "peg", Source, "erl",
-            fun compile_peg/3, [{check_last_mod, false}]) of
+            rebar_state:opts(State), [], SrcDir, ".peg", SrcDir, ".erl",
+            fun compile_peg/3, [{check_last_mod, true}]) of
         ok ->
-            {ok, State};
-        Error ->
+            run_neotoma(Apps, State);
+        {error, _} = Error ->
             Error
-    end.
+    end;
+run_neotoma([], State) ->
+    {ok, State}.
 
 -spec compile_peg(
         Source  :: file:name_all(),
         Target  :: file:name_all(),
-        State   :: rebar_state())
+        Config  :: term())  % Likely a dict(), but we don't care about it
         -> ok | skipped | [{error, term()} | {source, file:name_all()}].
 
-compile_peg(Source, Target, _State) ->
-    rebar_api:debug("compile_peg(~p, ~p)", [Source, Target]),
-    case filelib:last_modified(Target) < filelib:last_modified(Source) of
-        true ->
-            case neotoma:file(Source, [{output, filename:dirname(Target)}]) of
-                ok ->
-                    ok;
-                {error, _} = Err ->
-                    [Err, {source, Source}]
-            end;
-        _ ->
-            skipped
+compile_peg(Source, Target, _Config) ->
+    rebar_api:info("Compiling ~s...", [filename:basename(Source)]),
+    case neotoma:file(Source, [{output, filename:dirname(Target)}]) of
+        ok ->
+            ok;
+        {error, _} = Err ->
+            [Err, {source, Source}]
     end.

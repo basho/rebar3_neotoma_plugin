@@ -5,7 +5,9 @@ Refer to the [GitHub Repository](https://github.com/basho/neotoma) for details o
 
 ## How To Use It
 
-Include the following in your `rebar.config` file:
+The plugin is configured with statements in your `rebar.config` file.
+
+### To Include the Plugin
 
 ```erlang
 {plugins, [
@@ -15,12 +17,38 @@ Include the following in your `rebar.config` file:
 ]}.
 ```
 
-### Notes
+### To Compile `.peg` Files Automatically
 
-This fork uses [Basho's](http://www.basho.com) fork of _neotoma_, which may differ from the upstream original.
+```erlang
+{provider_hooks, [
+    {pre,   [{compile,  neotoma}]}
+]}.
+```
+> Note that unlike the original from which this is forked, this provider resides in the default namespace.
 
-To run `xref` or `dialyzer` on the plugin, use the `check` profile.
+## Command Line
 
-### License
+### To Compile `.peg` Files Manually
 
-Refer to the license [here](LICENSE).
+```shell
+$ rebar3 neotoma
+```
+
+## Notes
+
+This revision uses [Basho's](http://www.basho.com) fork of _neotoma_, which may differ from the upstream original.
+
+### Development
+
+To run `xref` or `dialyzer` on the plugin, use the `check` profile:
+
+```shell
+$ rebar3 as check xref
+$ rebar3 as check dialyzer
+```
+
+## License
+
+This work is heavily revised from earlier versions by Oleg Tsarev and Tristan Sloughter.
+
+All revisions are subject to this [license](LICENSE).
